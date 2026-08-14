@@ -426,7 +426,7 @@ function GraficoBarras({ serie }: { serie: { dia: string; focos: number }[] }) {
   return (
     <div className="flex h-32 items-end gap-2">
       {serie.map((s) => (
-        <div key={s.dia} className="flex flex-1 flex-col items-center gap-1.5">
+        <div key={s.dia} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
           <span className="numero-tecnico text-[10px] text-muted-foreground">{s.focos}</span>
           <div
             className="w-full rounded-t-sm"

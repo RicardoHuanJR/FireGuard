@@ -157,10 +157,10 @@ export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }
         </text>
       </g>
       <g>
-        <line x1={W - 190} y1={H - 44} x2={W - 60} y2={H - 44} stroke="var(--foreground)" strokeWidth="3" />
+        <line x1={140} y1={H - 30} x2={270} y2={H - 30} stroke="var(--foreground)" strokeWidth="3" />
         <text
-          x={W - 190}
-          y={H - 54}
+          x={140}
+          y={H - 40}
           fill="var(--foreground)"
           fontSize="16"
           className="numero-tecnico"
