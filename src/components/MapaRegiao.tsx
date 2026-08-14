@@ -17,8 +17,8 @@ export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }
 
   const proj = useMemo(
     () => (lon: number, lat: number) => ({
-      x: ((lon - oeste) / (leste - oeste)) * W,
-      y: ((norte - lat) / (norte - sul)) * H,
+      x: Number((((lon - oeste) / (leste - oeste)) * W).toFixed(2)),
+      y: Number((((norte - lat) / (norte - sul)) * H).toFixed(2)),
     }),
     [oeste, leste, sul, norte],
   );
@@ -29,14 +29,14 @@ export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }
     const pontos: { x: number; y: number; ang: number; forca: number }[] = [];
     for (let i = 0; i < cols; i++) {
       for (let j = 0; j < rows; j++) {
-        const x = ((i + 0.5) / cols) * W;
-        const y = ((j + 0.5) / rows) * H;
+        const x = Number((((i + 0.5) / cols) * W).toFixed(2));
+        const y = Number((((j + 0.5) / rows) * H).toFixed(2));
         const jitter = Math.sin(i * 1.7 + j * 2.3) * 16;
         pontos.push({
           x,
           y,
-          ang: dados.condicoes.vento.direcaoGraus + 180 + jitter,
-          forca: 0.55 + Math.abs(Math.sin(i * 0.8 + j * 1.1)) * 0.45,
+          ang: Number((dados.condicoes.vento.direcaoGraus + 180 + jitter).toFixed(2)),
+          forca: Number((0.55 + Math.abs(Math.sin(i * 0.8 + j * 1.1)) * 0.45).toFixed(3)),
         });
       }
     }
@@ -106,7 +106,7 @@ export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }
         <g>
           {dados.focos.map((f) => {
             const { x, y } = proj(f.lon, f.lat);
-            const r = 40 + (f.frpMw / 260) * 130;
+            const r = Number((40 + (f.frpMw / 260) * 130).toFixed(2));
             return <circle key={`t-${f.id}`} cx={x} cy={y} r={r} fill="url(#grad-termal)" />;
           })}
         </g>
@@ -116,12 +116,12 @@ export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }
       {camadas.vento && (
         <g stroke="var(--vento)" strokeLinecap="round" fill="none">
           {gridVento.map((p, i) => (
-            <g key={`v-${i}`} transform={`translate(${p.x} ${p.y}) rotate(${p.ang})`} opacity={0.25 + p.forca * 0.4}>
+            <g key={`v-${i}`} transform={`translate(${p.x} ${p.y}) rotate(${p.ang})`} opacity={Number((0.25 + p.forca * 0.4).toFixed(3))}>
               <path
                 d="M0 14 L0 -14"
-                strokeWidth={1.6 * p.forca + 0.5}
+                strokeWidth={Number((1.6 * p.forca + 0.5).toFixed(3))}
                 strokeDasharray="6 6"
-                style={{ animation: `fluxo ${2.6 - p.forca}s linear infinite` }}
+                style={{ animation: `fluxo ${(2.6 - p.forca).toFixed(2)}s linear infinite` }}
               />
               <path d="M-4 -8 L0 -15 L4 -8" strokeWidth={1.5} />
             </g>
@@ -185,7 +185,7 @@ function MarcadorFoco({
   onClick: () => void;
 }) {
   const cor = corDoRisco(foco.risco);
-  const r = 5 + (foco.frpMw / 260) * 10;
+  const r = Number((5 + (foco.frpMw / 260) * 10).toFixed(2));
   const critico = foco.risco === "critico" || foco.risco === "alto";
 
   return (
