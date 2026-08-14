@@ -1,0 +1,208 @@
+import { useMemo } from "react";
+import type { DadosRegiao, Foco } from "@/lib/queimadas-data";
+import { corDoRisco } from "@/lib/queimadas-data";
+
+const W = 1000;
+const H = 660;
+
+interface Props {
+  dados: DadosRegiao;
+  camadas: { focos: boolean; termal: boolean; vento: boolean };
+  focoSelecionado: string | null;
+  onSelecionarFoco: (id: string) => void;
+}
+
+export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }: Props) {
+  const [oeste, sul, leste, norte] = dados.regiao.bbox;
+
+  const proj = useMemo(
+    () => (lon: number, lat: number) => ({
+      x: ((lon - oeste) / (leste - oeste)) * W,
+      y: ((norte - lat) / (norte - sul)) * H,
+    }),
+    [oeste, leste, sul, norte],
+  );
+
+  const gridVento = useMemo(() => {
+    const cols = 13;
+    const rows = 9;
+    const pontos: { x: number; y: number; ang: number; forca: number }[] = [];
+    for (let i = 0; i < cols; i++) {
+      for (let j = 0; j < rows; j++) {
+        const x = ((i + 0.5) / cols) * W;
+        const y = ((j + 0.5) / rows) * H;
+        const jitter = Math.sin(i * 1.7 + j * 2.3) * 16;
+        pontos.push({
+          x,
+          y,
+          ang: dados.condicoes.vento.direcaoGraus + 180 + jitter,
+          forca: 0.55 + Math.abs(Math.sin(i * 0.8 + j * 1.1)) * 0.45,
+        });
+      }
+    }
+    return pontos;
+  }, [dados.condicoes.vento.direcaoGraus]);
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="h-full w-full"
+      role="img"
+      aria-label={`Mapa de focos de calor em ${dados.regiao.nome}`}
+      preserveAspectRatio="xMidYMid slice"
+    >
+      <defs>
+        <radialGradient id="grad-termal">
+          <stop offset="0%" stopColor="var(--fogo-forte)" stopOpacity="0.55" />
+          <stop offset="55%" stopColor="var(--fogo)" stopOpacity="0.2" />
+          <stop offset="100%" stopColor="var(--fogo)" stopOpacity="0" />
+        </radialGradient>
+        <pattern id="grade" width="50" height="50" patternUnits="userSpaceOnUse">
+          <path d="M50 0 L0 0 0 50" fill="none" stroke="var(--grade)" strokeWidth="1" />
+        </pattern>
+        <linearGradient id="relevo" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="oklch(0.24 0.03 165)" />
+          <stop offset="60%" stopColor="oklch(0.21 0.022 200)" />
+          <stop offset="100%" stopColor="oklch(0.2 0.02 250)" />
+        </linearGradient>
+      </defs>
+
+      <rect width={W} height={H} fill="url(#relevo)" />
+
+      {/* massas de vegetação / hidrografia estilizadas */}
+      <g opacity="0.5">
+        <path
+          d="M-20 120 C 180 60, 320 200, 520 150 S 860 90, 1040 170 L1040 -20 L-20 -20 Z"
+          fill="oklch(0.26 0.045 158)"
+          opacity="0.55"
+        />
+        <path
+          d="M-20 560 C 200 520, 340 640, 560 600 S 880 540, 1040 590 L1040 700 L-20 700 Z"
+          fill="oklch(0.25 0.04 150)"
+          opacity="0.5"
+        />
+        <path
+          d="M60 700 C 200 520, 300 460, 420 380 S 620 250, 720 -20"
+          fill="none"
+          stroke="oklch(0.42 0.08 225)"
+          strokeWidth="9"
+          strokeLinecap="round"
+          opacity="0.7"
+        />
+        <path
+          d="M980 660 C 860 540, 760 520, 640 420 S 470 330, 420 380"
+          fill="none"
+          stroke="oklch(0.42 0.08 225)"
+          strokeWidth="6"
+          strokeLinecap="round"
+          opacity="0.6"
+        />
+      </g>
+
+      <rect width={W} height={H} fill="url(#grade)" opacity="0.55" />
+
+      {/* Camada termal */}
+      {camadas.termal && (
+        <g>
+          {dados.focos.map((f) => {
+            const { x, y } = proj(f.lon, f.lat);
+            const r = 40 + (f.frpMw / 260) * 130;
+            return <circle key={`t-${f.id}`} cx={x} cy={y} r={r} fill="url(#grad-termal)" />;
+          })}
+        </g>
+      )}
+
+      {/* Camada de vento */}
+      {camadas.vento && (
+        <g stroke="var(--vento)" strokeLinecap="round" fill="none">
+          {gridVento.map((p, i) => (
+            <g key={`v-${i}`} transform={`translate(${p.x} ${p.y}) rotate(${p.ang})`} opacity={0.25 + p.forca * 0.4}>
+              <path
+                d="M0 14 L0 -14"
+                strokeWidth={1.6 * p.forca + 0.5}
+                strokeDasharray="6 6"
+                style={{ animation: `fluxo ${2.6 - p.forca}s linear infinite` }}
+              />
+              <path d="M-4 -8 L0 -15 L4 -8" strokeWidth={1.5} />
+            </g>
+          ))}
+        </g>
+      )}
+
+      {/* Camada de focos */}
+      {camadas.focos && (
+        <g>
+          {dados.focos.map((f) => (
+            <MarcadorFoco
+              key={f.id}
+              foco={f}
+              pos={proj(f.lon, f.lat)}
+              selecionado={focoSelecionado === f.id}
+              onClick={() => onSelecionarFoco(f.id)}
+            />
+          ))}
+        </g>
+      )}
+
+      {/* Escala e coordenadas */}
+      <g className="numero-tecnico" fill="var(--muted-foreground)" fontSize="16">
+        <text x="18" y="30">
+          {norte.toFixed(2)}°
+        </text>
+        <text x="18" y={H - 16}>
+          {sul.toFixed(2)}°
+        </text>
+        <text x={W - 90} y={H - 16}>
+          {leste.toFixed(2)}°
+        </text>
+      </g>
+      <g>
+        <line x1={W - 190} y1={H - 44} x2={W - 60} y2={H - 44} stroke="var(--foreground)" strokeWidth="3" />
+        <text
+          x={W - 190}
+          y={H - 54}
+          fill="var(--foreground)"
+          fontSize="16"
+          className="numero-tecnico"
+          opacity="0.8"
+        >
+          50 km
+        </text>
+      </g>
+    </svg>
+  );
+}
+
+function MarcadorFoco({
+  foco,
+  pos,
+  selecionado,
+  onClick,
+}: {
+  foco: Foco;
+  pos: { x: number; y: number };
+  selecionado: boolean;
+  onClick: () => void;
+}) {
+  const cor = corDoRisco(foco.risco);
+  const r = 5 + (foco.frpMw / 260) * 10;
+  const critico = foco.risco === "critico" || foco.risco === "alto";
+
+  return (
+    <g transform={`translate(${pos.x} ${pos.y})`} onClick={onClick} style={{ cursor: "pointer" }}>
+      {critico && <circle r={r} fill={cor} opacity="0.5" style={{ animation: "pulso-foco 1.8s ease-out infinite" }} />}
+      {selecionado && (
+        <>
+          <circle r={r + 14} fill="none" stroke="var(--foreground)" strokeWidth="2" strokeDasharray="4 5" />
+          <g stroke={cor} strokeWidth="2.5" strokeLinecap="round" transform={`rotate(${foco.avancoGraus})`}>
+            <path d={`M0 ${-(r + 6)} L0 ${-(r + 40)}`} />
+            <path d={`M-7 ${-(r + 30)} L0 ${-(r + 42)} L7 ${-(r + 30)}`} fill="none" />
+          </g>
+        </>
+      )}
+      <circle r={r} fill={cor} stroke="oklch(0.17 0.012 260)" strokeWidth="1.5" />
+      <circle r={r * 0.4} fill="oklch(0.98 0.03 90)" opacity="0.85" />
+      <title>{`${foco.frpMw} MW · índice ${foco.indicePropagacao}`}</title>
+    </g>
+  );
+}
