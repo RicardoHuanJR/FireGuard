@@ -121,7 +121,7 @@ export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }
                 d="M0 14 L0 -14"
                 strokeWidth={Number((1.6 * p.forca + 0.5).toFixed(3))}
                 strokeDasharray="6 6"
-                style={{ animation: `fluxo ${(2.6 - p.forca).toFixed(2)}s linear infinite` }}
+                className="animate-[fluxo_2.4s_linear_infinite]"
               />
               <path d="M-4 -8 L0 -15 L4 -8" strokeWidth={1.5} />
             </g>
