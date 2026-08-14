@@ -140,7 +140,7 @@ function hash(txt: string) {
 
 export function rosaDosVentos(graus: number) {
   const pontos = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
-  return pontos[Math.round(((graus % 360) / 22.5)) % 16];
+  return pontos[Math.round((graus % 360) / 22.5) % 16]!;
 }
 
 export function kmhParaNos(kmh: number) {
@@ -185,7 +185,7 @@ function nivelPorIndice(indice: number): NivelRisco {
 }
 
 export function carregarRegiao(regiaoId: string, referencia = 0): DadosRegiao {
-  const regiao = REGIOES.find((r) => r.id === regiaoId) ?? REGIOES[0];
+  const regiao = REGIOES.find((r) => r.id === regiaoId) ?? REGIOES[0]!;
   const r = rng(hash(regiao.id) + referencia);
 
   const temperaturaC = 26 + r() * 12;
@@ -226,7 +226,7 @@ export function carregarRegiao(regiaoId: string, referencia = 0): DadosRegiao {
       temperaturaK: Math.round(305 + Math.pow(r(), 1.5) * 105),
       detectadoEm,
       horasAtras,
-      satelite: SATELITES[Math.floor(r() * SATELITES.length)],
+      satelite: SATELITES[Math.floor(r() * SATELITES.length)]!,
       municipio: regiao.nome,
       risco: nivelPorIndice(indice),
       avancoGraus: (direcaoBase + 180 + (r() * 40 - 20) + 360) % 360,
