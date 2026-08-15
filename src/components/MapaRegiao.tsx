@@ -33,6 +33,14 @@ export function MapaRegiao({
     [oeste, leste, sul, norte],
   );
 
+  /** pixels do viewBox por km, usando a largura da bbox. */
+  const pxPorKm = useMemo(() => {
+    const kmLargura = (leste - oeste) * 111.32 * Math.cos((((norte + sul) / 2) * Math.PI) / 180);
+    return W / Math.max(kmLargura, 1);
+  }, [oeste, leste, norte, sul]);
+
+
+
   const gridVento = useMemo(() => {
     const cols = 13;
     const rows = 9;
