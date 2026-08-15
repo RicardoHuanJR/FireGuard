@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { DadosRegiao, Foco } from "@/lib/queimadas-data";
+import type { AmeacaFoco, DadosRegiao, Foco, Propriedade } from "@/lib/queimadas-data";
 import { corDoRisco } from "@/lib/queimadas-data";
 
 const W = 1000;
@@ -7,13 +7,23 @@ const H = 660;
 
 interface Props {
   dados: DadosRegiao;
-  camadas: { focos: boolean; termal: boolean; vento: boolean };
+  camadas: { focos: boolean; termal: boolean; vento: boolean; propriedade: boolean };
   focoSelecionado: string | null;
   onSelecionarFoco: (id: string) => void;
+  propriedade: Propriedade;
+  ameacaPrincipal?: AmeacaFoco | null;
 }
 
-export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }: Props) {
+export function MapaRegiao({
+  dados,
+  camadas,
+  focoSelecionado,
+  onSelecionarFoco,
+  propriedade,
+  ameacaPrincipal,
+}: Props) {
   const [oeste, sul, leste, norte] = dados.regiao.bbox;
+
 
   const proj = useMemo(
     () => (lon: number, lat: number) => ({
