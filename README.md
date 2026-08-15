@@ -1,4 +1,4 @@
-# AtmosFogo
+# FireGuard
 
 Protótipo de painel de monitoramento ambiental para acompanhamento de **focos de queimadas**, **direção e velocidade do vento** e **dados termológicos** por região. Ideal para centros de comando, salas de situação e pesquisa ambiental.
 
