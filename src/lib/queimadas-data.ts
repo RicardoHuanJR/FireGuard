@@ -263,3 +263,177 @@ export function carregarRegiao(regiaoId: string, referencia = 0): DadosRegiao {
     atualizadoEm: "14/08/2026 19:00 (BRT)",
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * FireGuard Sat — camada de propriedade rural e análise de ameaça
+ * ------------------------------------------------------------------ */
+
+export interface Propriedade {
+  id: string;
+  nome: string;
+  proprietario: string;
+  hectares: number;
+  lat: number;
+  lon: number;
+  /** raio aproximado da área monitorada, em km */
+  raioKm: number;
+  /** raio do perímetro de vigilância para alertas, em km */
+  perimetroAlertaKm: number;
+  cultura: string;
+}
+
+/** Uma propriedade de referência por região monitorada. */
+export const PROPRIEDADES: Record<string, Propriedade> = {
+  "novo-progresso-pa": {
+    id: "fazenda-serra-azul",
+    nome: "Fazenda Serra Azul",
+    proprietario: "Cooperativa Serra Azul",
+    hectares: 1240,
+    lat: -7.2,
+    lon: -55.3,
+    raioKm: 6.5,
+    perimetroAlertaKm: 30,
+    cultura: "Pecuária + soja",
+  },
+  "corumba-ms": {
+    id: "fazenda-porto-alegre",
+    nome: "Fazenda Porto Bonito",
+    proprietario: "Agro Pantanal",
+    hectares: 3100,
+    lat: -19.05,
+    lon: -57.58,
+    raioKm: 9,
+    perimetroAlertaKm: 35,
+    cultura: "Pecuária extensiva",
+  },
+  "porto-velho-ro": {
+    id: "sitio-jamari",
+    nome: "Sítio Jamari",
+    proprietario: "Família Nogueira",
+    hectares: 480,
+    lat: -8.7,
+    lon: -63.83,
+    raioKm: 4,
+    perimetroAlertaKm: 25,
+    cultura: "Café + fruticultura",
+  },
+  "chapada-veadeiros-go": {
+    id: "fazenda-agua-fria",
+    nome: "Fazenda Água Fria",
+    proprietario: "Agro Cerrado",
+    hectares: 2050,
+    lat: -14.2,
+    lon: -47.45,
+    raioKm: 7.5,
+    perimetroAlertaKm: 30,
+    cultura: "Grãos irrigados",
+  },
+  "sao-felix-mt": {
+    id: "fazenda-araguaia",
+    nome: "Fazenda Araguaia",
+    proprietario: "Grupo Araguaia",
+    hectares: 5400,
+    lat: -11.68,
+    lon: -50.6,
+    raioKm: 12,
+    perimetroAlertaKm: 40,
+    cultura: "Algodão + pecuária",
+  },
+};
+
+export function propriedadeDaRegiao(regiaoId: string): Propriedade {
+  return PROPRIEDADES[regiaoId] ?? PROPRIEDADES["novo-progresso-pa"]!;
+}
+
+/** Distância em km entre dois pontos geográficos (Haversine). */
+export function distanciaKm(aLat: number, aLon: number, bLat: number, bLon: number) {
+  const R = 6371;
+  const rad = Math.PI / 180;
+  const dLat = (bLat - aLat) * rad;
+  const dLon = (bLon - aLon) * rad;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Azimute (0-360°) do ponto A para o ponto B. */
+export function azimute(aLat: number, aLon: number, bLat: number, bLon: number) {
+  const rad = Math.PI / 180;
+  const y = Math.sin((bLon - aLon) * rad) * Math.cos(bLat * rad);
+  const x =
+    Math.cos(aLat * rad) * Math.sin(bLat * rad) -
+    Math.sin(aLat * rad) * Math.cos(bLat * rad) * Math.cos((bLon - aLon) * rad);
+  return (Math.atan2(y, x) / rad + 360) % 360;
+}
+
+/** Diferença angular mínima entre dois azimutes (0-180). */
+export function difAngular(a: number, b: number) {
+  const d = Math.abs(((a - b + 540) % 360) - 180);
+  return d;
+}
+
+export interface AmeacaFoco {
+  foco: Foco;
+  distanciaKm: number;
+  /** direção do foco em relação à propriedade (onde ele está) */
+  azimuteDoFoco: number;
+  /** direção que o fogo deve seguir */
+  azimuteAvanco: number;
+  /** 0-1: quanto o avanço do fogo aponta para a propriedade */
+  alinhamento: number;
+  /** velocidade estimada de avanço da frente de fogo, km/h */
+  velocidadeAvancoKmh: number;
+  /** horas estimadas até atingir o perímetro, null se não vem na direção */
+  horasAteChegar: number | null;
+  /** 0-100 */
+  indiceAmeaca: number;
+  nivel: NivelRisco;
+  /** setor da propriedade potencialmente afetado */
+  setorAmeacado: string;
+}
+
+function setorPorAzimute(graus: number) {
+  const setores = ["norte", "nordeste", "leste", "sudeste", "sul", "sudoeste", "oeste", "noroeste"];
+  return setores[Math.round(graus / 45) % 8]!;
+}
+
+/**
+ * Cruza um foco de calor com a propriedade: distância, alinhamento com o
+ * avanço do fogo e índice de ameaça (0-100).
+ */
+export function analisarAmeaca(foco: Foco, prop: Propriedade, ventoKmh: number): AmeacaFoco {
+  const dist = distanciaKm(prop.lat, prop.lon, foco.lat, foco.lon);
+  const azFoco = azimute(prop.lat, prop.lon, foco.lat, foco.lon);
+  const azParaFazenda = (azFoco + 180) % 360;
+  const desvio = difAngular(foco.avancoGraus, azParaFazenda);
+  const alinhamento = Math.max(0, 1 - desvio / 90);
+
+  const velocidadeAvancoKmh = Math.max(0.4, ventoKmh * 0.09 + foco.indicePropagacao / 55);
+  const distanciaLivre = Math.max(dist - prop.raioKm, 0);
+  const horasAteChegar =
+    alinhamento > 0.15 ? Number((distanciaLivre / (velocidadeAvancoKmh * alinhamento)).toFixed(1)) : null;
+
+  const fDist = Math.max(0, 1 - distanciaLivre / prop.perimetroAlertaKm);
+  const indiceAmeaca = Math.round(
+    Math.min(100, fDist * 52 + alinhamento * 28 + (foco.indicePropagacao / 100) * 20),
+  );
+
+  return {
+    foco,
+    distanciaKm: Number(dist.toFixed(1)),
+    azimuteDoFoco: azFoco,
+    azimuteAvanco: foco.avancoGraus,
+    alinhamento: Number(alinhamento.toFixed(2)),
+    velocidadeAvancoKmh: Number(velocidadeAvancoKmh.toFixed(2)),
+    horasAteChegar,
+    indiceAmeaca,
+    nivel: nivelPorIndice(indiceAmeaca),
+    setorAmeacado: setorPorAzimute(azFoco),
+  };
+}
+
+export function analisarRegiao(dados: DadosRegiao, prop: Propriedade): AmeacaFoco[] {
+  return dados.focos
+    .map((f) => analisarAmeaca(f, prop, dados.condicoes.vento.velocidadeKmh))
+    .sort((a, b) => b.indiceAmeaca - a.indiceAmeaca);
+}

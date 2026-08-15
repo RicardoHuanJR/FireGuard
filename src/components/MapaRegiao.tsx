@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { DadosRegiao, Foco } from "@/lib/queimadas-data";
+import type { AmeacaFoco, DadosRegiao, Foco, Propriedade } from "@/lib/queimadas-data";
 import { corDoRisco } from "@/lib/queimadas-data";
 
 const W = 1000;
@@ -7,13 +7,23 @@ const H = 660;
 
 interface Props {
   dados: DadosRegiao;
-  camadas: { focos: boolean; termal: boolean; vento: boolean };
+  camadas: { focos: boolean; termal: boolean; vento: boolean; propriedade: boolean };
   focoSelecionado: string | null;
   onSelecionarFoco: (id: string) => void;
+  propriedade: Propriedade;
+  ameacaPrincipal?: AmeacaFoco | null;
 }
 
-export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }: Props) {
+export function MapaRegiao({
+  dados,
+  camadas,
+  focoSelecionado,
+  onSelecionarFoco,
+  propriedade,
+  ameacaPrincipal,
+}: Props) {
   const [oeste, sul, leste, norte] = dados.regiao.bbox;
+
 
   const proj = useMemo(
     () => (lon: number, lat: number) => ({
@@ -22,6 +32,14 @@ export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }
     }),
     [oeste, leste, sul, norte],
   );
+
+  /** pixels do viewBox por km, usando a largura da bbox. */
+  const pxPorKm = useMemo(() => {
+    const kmLargura = (leste - oeste) * 111.32 * Math.cos((((norte + sul) / 2) * Math.PI) / 180);
+    return W / Math.max(kmLargura, 1);
+  }, [oeste, leste, norte, sul]);
+
+
 
   const gridVento = useMemo(() => {
     const cols = 13;
@@ -143,6 +161,72 @@ export function MapaRegiao({ dados, camadas, focoSelecionado, onSelecionarFoco }
           ))}
         </g>
       )}
+
+      {/* Cone de possível propagação até a propriedade */}
+      {ameacaPrincipal && camadas.propriedade && (() => {
+        const p = proj(ameacaPrincipal.foco.lon, ameacaPrincipal.foco.lat);
+        const alcance = Number(
+          Math.min(Math.max(ameacaPrincipal.distanciaKm * 1.35, 8) * pxPorKm, 900).toFixed(2),
+        );
+        const meia = Math.tan((28 * Math.PI) / 180) * alcance;
+        return (
+          <g transform={`translate(${p.x} ${p.y}) rotate(${ameacaPrincipal.azimuteAvanco.toFixed(1)})`}>
+            <path
+              d={`M0 0 L${(-meia).toFixed(2)} ${(-alcance).toFixed(2)} L${meia.toFixed(2)} ${(-alcance).toFixed(2)} Z`}
+              fill="var(--fogo)"
+              opacity="0.16"
+              stroke="var(--fogo)"
+              strokeOpacity="0.45"
+              strokeWidth="2"
+              strokeDasharray="8 7"
+            />
+          </g>
+        );
+      })()}
+
+      {/* Camada da propriedade */}
+      {camadas.propriedade && (() => {
+        const p = proj(propriedade.lon, propriedade.lat);
+        const rProp = Number((propriedade.raioKm * pxPorKm).toFixed(2));
+        const rAlerta = Number((propriedade.perimetroAlertaKm * pxPorKm).toFixed(2));
+        return (
+          <g>
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={rAlerta}
+              fill="none"
+              stroke="var(--vento)"
+              strokeOpacity="0.5"
+              strokeWidth="2"
+              strokeDasharray="10 10"
+            />
+            <circle cx={p.x} cy={p.y} r={rProp} fill="var(--vento)" opacity="0.14" />
+            <circle cx={p.x} cy={p.y} r={rProp} fill="none" stroke="var(--vento)" strokeWidth="2.5" />
+            <g transform={`translate(${p.x} ${p.y})`}>
+              <path
+                d="M-13 6 L0 -8 L13 6 Z"
+                fill="var(--vento)"
+                stroke="oklch(0.17 0.012 260)"
+                strokeWidth="1.5"
+              />
+              <rect x="-8" y="6" width="16" height="10" fill="var(--vento)" />
+              <text
+                y="34"
+                textAnchor="middle"
+                fontSize="17"
+                fill="var(--foreground)"
+                className="numero-tecnico"
+              >
+                {propriedade.nome}
+              </text>
+              <title>{`${propriedade.nome} — ${propriedade.hectares} ha`}</title>
+            </g>
+          </g>
+        );
+      })()}
+
+
 
       {/* Escala e coordenadas */}
       <g className="numero-tecnico" fill="var(--muted-foreground)" fontSize="16">
