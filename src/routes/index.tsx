@@ -1,33 +1,50 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Flame, Wind, Thermometer, Droplets, Satellite, Gauge, MapPin, Layers, CloudRain } from "lucide-react";
+import {
+  Flame,
+  Wind,
+  Thermometer,
+  Droplets,
+  Satellite,
+  Gauge,
+  MapPin,
+  Layers,
+  CloudRain,
+  Ruler,
+  Timer,
+  ShieldAlert,
+  Compass,
+} from "lucide-react";
 
 import { MapaRegiao } from "@/components/MapaRegiao";
+import { NavTopo } from "@/components/NavTopo";
 import {
   REGIOES,
+  analisarRegiao,
   carregarRegiao,
   corDoRisco,
   kmhParaNos,
+  propriedadeDaRegiao,
   rosaDosVentos,
   rotuloRisco,
-  type Foco,
+  type AmeacaFoco,
   type NivelRisco,
 } from "@/lib/queimadas-data";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "AtmosFogo — Monitoramento de Queimadas e Vento" },
+      { title: "FireGuard Sat — Alerta de incêndio para propriedades rurais" },
       {
         name: "description",
         content:
-          "Painel de monitoramento de focos de calor, temperatura de superfície e direção e velocidade do vento por região, com índice de risco de propagação.",
+          "Monitoramento por satélite de focos de incêndio próximos à sua fazenda: distância, direção de avanço do fogo, setor ameaçado e nível de risco em tempo real.",
       },
-      { property: "og:title", content: "AtmosFogo — Monitoramento de Queimadas e Vento" },
+      { property: "og:title", content: "FireGuard Sat — Detectar antes. Alertar a tempo." },
       {
         property: "og:description",
         content:
-          "Mapa de regiões com focos de queimada, camada termal e campo de vento em tempo real, com projeção de propagação do fogo.",
+          "Cruzamento de focos de calor detectados por satélite com a localização da propriedade, vento e risco de propagação.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -46,101 +63,112 @@ const NIVEIS: NivelRisco[] = ["critico", "alto", "medio", "baixo"];
 
 function Painel() {
   const [regiaoId, setRegiaoId] = useState(REGIOES[0]!.id);
-  const [camadas, setCamadas] = useState({ focos: true, termal: true, vento: true });
+  const [camadas, setCamadas] = useState({ focos: true, termal: true, vento: true, propriedade: true });
   const [periodo, setPeriodo] = useState<number>(48);
   const [niveis, setNiveis] = useState<NivelRisco[]>(NIVEIS);
   const [selecionado, setSelecionado] = useState<string | null>(null);
 
   const dados = useMemo(() => carregarRegiao(regiaoId), [regiaoId]);
+  const propriedade = useMemo(() => propriedadeDaRegiao(regiaoId), [regiaoId]);
 
-  const focosFiltrados = useMemo(
-    () => dados.focos.filter((f) => f.horasAtras <= periodo && niveis.includes(f.risco)),
-    [dados, periodo, niveis],
+  const ameacas = useMemo(
+    () =>
+      analisarRegiao(dados, propriedade).filter(
+        (a) => a.foco.horasAtras <= periodo && niveis.includes(a.nivel),
+      ),
+    [dados, propriedade, periodo, niveis],
   );
 
+  const focosFiltrados = useMemo(() => ameacas.map((a) => a.foco), [ameacas]);
   const dadosMapa = useMemo(() => ({ ...dados, focos: focosFiltrados }), [dados, focosFiltrados]);
-  const foco = focosFiltrados.find((f) => f.id === selecionado) ?? null;
+
+  const principal = ameacas[0] ?? null;
+  const selecionada = ameacas.find((a) => a.foco.id === selecionado) ?? null;
+  const emFoco = selecionada ?? principal;
+  const dentroDoPerimetro = ameacas.filter(
+    (a) => a.distanciaKm - propriedade.raioKm <= propriedade.perimetroAlertaKm,
+  );
   const { vento } = dados.condicoes;
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-4 px-4 py-3 md:px-6">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-fogo/15 text-fogo">
-              <Flame className="h-4.5 w-4.5" />
-            </span>
-            <div>
-              <h1 className="text-base leading-none font-semibold tracking-tight">AtmosFogo</h1>
-              <p className="rotulo mt-1">Monitoramento de queimadas</p>
-            </div>
-          </div>
+      <header className="sticky top-0 z-30 border-b border-border bg-background/95 px-4 py-3 backdrop-blur md:px-6">
+        <NavTopo
+          direita={
+            <>
+              <div className="hidden items-center gap-1.5 sm:flex">
+                <Layers className="mr-1 h-4 w-4 text-muted-foreground" />
+                {(
+                  [
+                    ["focos", "Focos"],
+                    ["termal", "Termal"],
+                    ["vento", "Vento"],
+                    ["propriedade", "Fazenda"],
+                  ] as const
+                ).map(([key, rotulo]) => (
+                  <button
+                    key={key}
+                    onClick={() => setCamadas((c) => ({ ...c, [key]: !c[key] }))}
+                    aria-pressed={camadas[key]}
+                    className={`rounded-md border px-2.5 py-1 text-xs font-medium tracking-wide transition-colors ${
+                      camadas[key]
+                        ? "border-ring/60 bg-fogo/15 text-fogo"
+                        : "border-border bg-surface text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+              <div className="rotulo hidden md:block">Atualizado {dados.atualizadoEm}</div>
+            </>
+          }
+        />
 
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-            <select
-              value={regiaoId}
-              onChange={(e) => {
-                setRegiaoId(e.target.value);
-                setSelecionado(null);
-              }}
-              className="numero-tecnico rounded-md border border-input bg-surface px-3 py-1.5 text-sm text-foreground outline-none focus:border-ring"
-              aria-label="Selecionar região"
-            >
-              {REGIOES.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nome} / {r.uf}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="ml-auto flex items-center gap-4">
-            <div className="hidden items-center gap-1.5 sm:flex">
-              <Layers className="mr-1 h-4 w-4 text-muted-foreground" />
-              {(
-                [
-                  ["focos", "Focos"],
-                  ["termal", "Termal"],
-                  ["vento", "Vento"],
-                ] as const
-              ).map(([key, rotulo]) => (
-                <button
-                  key={key}
-                  onClick={() => setCamadas((c) => ({ ...c, [key]: !c[key] }))}
-                  aria-pressed={camadas[key]}
-                  className={`rounded-md border px-2.5 py-1 text-xs font-medium tracking-wide transition-colors ${
-                    camadas[key]
-                      ? "border-ring/60 bg-fogo/15 text-fogo"
-                      : "border-border bg-surface text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {rotulo}
-                </button>
-              ))}
-            </div>
-            <div className="rotulo hidden md:block">Atualizado {dados.atualizadoEm}</div>
-          </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3">
+          <MapPin className="h-4 w-4 text-muted-foreground" />
+          <select
+            value={regiaoId}
+            onChange={(e) => {
+              setRegiaoId(e.target.value);
+              setSelecionado(null);
+            }}
+            className="numero-tecnico rounded-md border border-input bg-surface px-3 py-1.5 text-sm text-foreground outline-none focus:border-ring"
+            aria-label="Selecionar propriedade monitorada"
+          >
+            {REGIOES.map((r) => (
+              <option key={r.id} value={r.id}>
+                {propriedadeDaRegiao(r.id).nome} — {r.nome}/{r.uf}
+              </option>
+            ))}
+          </select>
+          <span className="numero-tecnico text-xs text-muted-foreground">
+            {propriedade.hectares.toLocaleString("pt-BR")} ha · {propriedade.cultura} · perímetro de
+            vigilância {propriedade.perimetroAlertaKm} km
+          </span>
         </div>
       </header>
 
-      <main className="grid gap-4 p-4 md:p-6 lg:grid-cols-[1fr_360px]">
+      <main className="grid gap-4 p-4 md:p-6 lg:grid-cols-[1fr_380px]">
         <div className="flex flex-col gap-4">
+          <BannerAlerta ameaca={principal} propriedade={propriedade.nome} totalNoPerimetro={dentroDoPerimetro.length} />
+
           <div className="painel relative h-[380px] overflow-hidden md:h-[560px]">
             <MapaRegiao
               dados={dadosMapa}
               camadas={camadas}
               focoSelecionado={selecionado}
               onSelecionarFoco={setSelecionado}
+              propriedade={propriedade}
+              ameacaPrincipal={emFoco}
             />
             <div className="pointer-events-none absolute top-3 left-3 flex flex-col gap-2">
               <div className="painel bg-background/80 px-3 py-2 backdrop-blur">
-                <div className="rotulo">Região</div>
-                <div className="text-sm font-semibold">
-                  {dados.regiao.nome} <span className="text-muted-foreground">/ {dados.regiao.uf}</span>
-                </div>
+                <div className="rotulo">Propriedade monitorada</div>
+                <div className="text-sm font-semibold">{propriedade.nome}</div>
                 <div className="numero-tecnico mt-0.5 text-xs text-muted-foreground">
-                  {dados.regiao.lat.toFixed(2)}°, {dados.regiao.lon.toFixed(2)}°
+                  {propriedade.lat.toFixed(2)}°, {propriedade.lon.toFixed(2)}° · {dados.regiao.nome}/
+                  {dados.regiao.uf}
                 </div>
               </div>
               <div className="painel bg-background/80 px-3 py-2 backdrop-blur">
@@ -151,6 +179,9 @@ function Painel() {
                     {rotuloRisco(n)}
                   </div>
                 ))}
+                <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="h-2 w-2 rounded-full bg-vento" /> Fazenda e perímetro
+                </div>
               </div>
             </div>
 
@@ -160,11 +191,11 @@ function Painel() {
           </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Metrica icone={<Ruler className="h-4 w-4" />} rotulo="Foco mais próximo" tom="fogo">
+              {principal ? principal.distanciaKm.toFixed(1) : "—"} <small>km</small>
+            </Metrica>
             <Metrica icone={<Thermometer className="h-4 w-4" />} rotulo="Temperatura do ar">
               {dados.condicoes.temperaturaC.toFixed(1)} <small>°C</small>
-            </Metrica>
-            <Metrica icone={<Flame className="h-4 w-4" />} rotulo="Temp. de superfície" tom="fogo">
-              {dados.condicoes.temperaturaSuperficieC.toFixed(1)} <small>°C</small>
             </Metrica>
             <Metrica icone={<Droplets className="h-4 w-4" />} rotulo="Umidade relativa" tom="vento">
               {dados.condicoes.umidadePercent} <small>%</small>
@@ -189,7 +220,7 @@ function Painel() {
 
             <section className="painel p-4">
               <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                <Satellite className="h-4 w-4 text-fogo" /> Focos por dia
+                <Satellite className="h-4 w-4 text-fogo" /> Focos por dia na região
               </h2>
               <GraficoBarras serie={dados.serie} />
             </section>
@@ -198,27 +229,27 @@ function Painel() {
 
         <aside className="flex flex-col gap-4">
           <section className="painel p-4">
-            <div className="rotulo">Índice de propagação da região</div>
+            <div className="rotulo">Risco para a propriedade</div>
             <div className="mt-1 flex items-end gap-2">
               <span className="numero-tecnico text-4xl leading-none font-semibold text-fogo">
-                {dados.indiceRiscoRegiao}
+                {principal ? principal.indiceAmeaca : 0}
               </span>
               <span className="mb-1 text-xs text-muted-foreground">/100</span>
               <span
                 className="mb-1 ml-auto rounded-full px-2 py-0.5 text-xs font-semibold"
                 style={{
-                  backgroundColor: `color-mix(in oklch, ${corDoRisco(nivel(dados.indiceRiscoRegiao))} 22%, transparent)`,
-                  color: corDoRisco(nivel(dados.indiceRiscoRegiao)),
+                  backgroundColor: `color-mix(in oklch, ${corDoRisco(principal?.nivel ?? "baixo")} 22%, transparent)`,
+                  color: corDoRisco(principal?.nivel ?? "baixo"),
                 }}
               >
-                {rotuloRisco(nivel(dados.indiceRiscoRegiao))}
+                {rotuloRisco(principal?.nivel ?? "baixo")}
               </span>
             </div>
             <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2">
               <div
                 className="h-full rounded-full transition-all"
                 style={{
-                  width: `${dados.indiceRiscoRegiao}%`,
+                  width: `${principal?.indiceAmeaca ?? 0}%`,
                   background: `linear-gradient(90deg, var(--risco-baixo), var(--risco-medio), var(--risco-critico))`,
                 }}
               />
@@ -237,21 +268,19 @@ function Painel() {
                 </dd>
               </div>
               <div>
-                <dt className="rotulo">Focos ativos</dt>
-                <dd className="numero-tecnico mt-0.5 text-sm">{focosFiltrados.length}</dd>
+                <dt className="rotulo">Focos no perímetro</dt>
+                <dd className="numero-tecnico mt-0.5 text-sm">{dentroDoPerimetro.length}</dd>
               </div>
               <div>
-                <dt className="rotulo">Críticos</dt>
-                <dd className="numero-tecnico mt-0.5 text-sm text-risco-critico">
-                  {focosFiltrados.filter((f) => f.risco === "critico").length}
-                </dd>
+                <dt className="rotulo">Risco da região</dt>
+                <dd className="numero-tecnico mt-0.5 text-sm">{dados.indiceRiscoRegiao}/100</dd>
               </div>
             </dl>
           </section>
 
           <section className="painel flex min-h-0 flex-col p-4">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <Gauge className="h-4 w-4 text-fogo" /> Alertas por severidade
+              <Gauge className="h-4 w-4 text-fogo" /> Focos por proximidade e ameaça
             </h2>
 
             <div className="mt-3 flex gap-1">
@@ -294,12 +323,16 @@ function Painel() {
             </div>
 
             <ul className="mt-3 -mr-1 flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1">
-              {focosFiltrados.map((f) => (
-                <li key={f.id}>
-                  <ItemFoco foco={f} ativo={selecionado === f.id} onClick={() => setSelecionado(f.id)} />
+              {ameacas.map((a) => (
+                <li key={a.foco.id}>
+                  <ItemAmeaca
+                    ameaca={a}
+                    ativo={selecionado === a.foco.id}
+                    onClick={() => setSelecionado(a.foco.id)}
+                  />
                 </li>
               ))}
-              {focosFiltrados.length === 0 && (
+              {ameacas.length === 0 && (
                 <li className="py-6 text-center text-xs text-muted-foreground">
                   Nenhum foco no período e filtros selecionados.
                 </li>
@@ -307,23 +340,119 @@ function Painel() {
             </ul>
           </section>
 
-          {foco && <DetalheFoco foco={foco} />}
+          {emFoco && <DetalheAmeaca ameaca={emFoco} />}
         </aside>
       </main>
 
       <footer className="border-t border-border px-4 py-4 text-xs text-muted-foreground md:px-6">
-        Protótipo com dados simulados. Estrutura pronta para integração com INPE / Programa Queimadas, NASA
-        FIRMS e Open-Meteo.
+        Protótipo com dados simulados de satélite. Estrutura pronta para integração com INPE / Programa
+        Queimadas, NASA FIRMS e Open-Meteo. "O fogo pode ser imprevisível. A informação não precisa ser."
       </footer>
     </div>
   );
 }
 
-function nivel(indice: number): NivelRisco {
-  if (indice >= 78) return "critico";
-  if (indice >= 58) return "alto";
-  if (indice >= 36) return "medio";
-  return "baixo";
+function BannerAlerta({
+  ameaca,
+  propriedade,
+  totalNoPerimetro,
+}: {
+  ameaca: AmeacaFoco | null;
+  propriedade: string;
+  totalNoPerimetro: number;
+}) {
+  if (!ameaca) {
+    return (
+      <section className="painel flex items-center gap-3 border-vento/40 p-4">
+        <ShieldAlert className="h-5 w-5 text-vento" />
+        <p className="text-sm">
+          Nenhum foco ativo nos filtros atuais para a <strong>{propriedade}</strong>.
+        </p>
+      </section>
+    );
+  }
+
+  const cor = corDoRisco(ameaca.nivel);
+  return (
+    <section
+      className="painel p-4"
+      style={{ borderColor: `color-mix(in oklch, ${cor} 55%, transparent)` }}
+      aria-live="polite"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Flame className="h-4 w-4" style={{ color: cor }} />
+        <span className="rotulo" style={{ color: cor }}>
+          Alerta de risco
+        </span>
+        <span
+          className="rounded-full px-2 py-0.5 text-xs font-semibold"
+          style={{ backgroundColor: `color-mix(in oklch, ${cor} 22%, transparent)`, color: cor }}
+        >
+          {rotuloRisco(ameaca.nivel).toUpperCase()}
+        </span>
+        <span className="numero-tecnico ml-auto text-xs text-muted-foreground">
+          {totalNoPerimetro} foco(s) dentro do perímetro de vigilância
+        </span>
+      </div>
+
+      <p className="mt-2 text-sm md:text-base">
+        Foco detectado a{" "}
+        <strong className="numero-tecnico" style={{ color: cor }}>
+          {ameaca.distanciaKm.toFixed(1)} km
+        </strong>{" "}
+        da sua propriedade, a {rosaDosVentos(ameaca.azimuteDoFoco)}. Direção estimada de avanço:{" "}
+        <strong>{rosaDosVentos(ameaca.azimuteAvanco)}</strong>. Área potencialmente ameaçada: região{" "}
+        <strong>{ameaca.setorAmeacado}</strong> da propriedade.
+      </p>
+
+      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+        <LinhaAlerta
+          icone={<Timer className="h-3.5 w-3.5" />}
+          rotulo="Tempo estimado de aproximação"
+          valor={
+            ameaca.horasAteChegar === null
+              ? "Fogo não avança para a fazenda"
+              : `~${ameaca.horasAteChegar} h no ritmo atual`
+          }
+        />
+        <LinhaAlerta
+          icone={<Compass className="h-3.5 w-3.5" />}
+          rotulo="Alinhamento com a propriedade"
+          valor={`${Math.round(ameaca.alinhamento * 100)}%`}
+        />
+        <LinhaAlerta
+          icone={<Wind className="h-3.5 w-3.5" />}
+          rotulo="Velocidade da frente de fogo"
+          valor={`${ameaca.velocidadeAvancoKmh.toFixed(2)} km/h`}
+        />
+      </div>
+
+      <p className="mt-3 text-xs text-muted-foreground">
+        Ação recomendada: acompanhar a situação, conferir aceiros do setor {ameaca.setorAmeacado} e
+        comunicar as equipes responsáveis quando necessário.
+      </p>
+    </section>
+  );
+}
+
+function LinhaAlerta({
+  icone,
+  rotulo,
+  valor,
+}: {
+  icone: React.ReactNode;
+  rotulo: string;
+  valor: string;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface-2/40 px-3 py-2">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        {icone}
+        <span className="rotulo">{rotulo}</span>
+      </div>
+      <div className="numero-tecnico mt-0.5 text-sm text-foreground">{valor}</div>
+    </div>
+  );
 }
 
 function Metrica({
@@ -442,8 +571,16 @@ function GraficoBarras({ serie }: { serie: { dia: string; focos: number }[] }) {
   );
 }
 
-function ItemFoco({ foco, ativo, onClick }: { foco: Foco; ativo: boolean; onClick: () => void }) {
-  const cor = corDoRisco(foco.risco);
+function ItemAmeaca({
+  ameaca,
+  ativo,
+  onClick,
+}: {
+  ameaca: AmeacaFoco;
+  ativo: boolean;
+  onClick: () => void;
+}) {
+  const cor = corDoRisco(ameaca.nivel);
   return (
     <button
       onClick={onClick}
@@ -453,36 +590,44 @@ function ItemFoco({ foco, ativo, onClick }: { foco: Foco; ativo: boolean; onClic
     >
       <div className="flex items-center gap-2">
         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: cor }} />
-        <span className="numero-tecnico text-xs">
-          {foco.lat.toFixed(3)}, {foco.lon.toFixed(3)}
+        <span className="numero-tecnico text-sm font-semibold" style={{ color: cor }}>
+          {ameaca.distanciaKm.toFixed(1)} km
         </span>
-        <span className="numero-tecnico ml-auto text-sm font-semibold" style={{ color: cor }}>
-          {foco.indicePropagacao}
+        <span className="text-xs text-muted-foreground">
+          a {rosaDosVentos(ameaca.azimuteDoFoco)} · setor {ameaca.setorAmeacado}
+        </span>
+        <span className="numero-tecnico ml-auto text-xs" style={{ color: cor }}>
+          {ameaca.indiceAmeaca}
         </span>
       </div>
       <div className="numero-tecnico mt-1 flex gap-3 text-[11px] text-muted-foreground">
-        <span>{foco.frpMw.toFixed(0)} MW</span>
-        <span>{(foco.temperaturaK - 273.15).toFixed(0)} °C</span>
-        <span>há {foco.horasAtras.toFixed(0)} h</span>
+        <span>{ameaca.foco.frpMw.toFixed(0)} MW</span>
+        <span>há {ameaca.foco.horasAtras.toFixed(0)} h</span>
+        <span>
+          {ameaca.horasAteChegar === null ? "sem avanço p/ fazenda" : `~${ameaca.horasAteChegar} h`}
+        </span>
       </div>
     </button>
   );
 }
 
-function DetalheFoco({ foco }: { foco: Foco }) {
-  const cor = corDoRisco(foco.risco);
+function DetalheAmeaca({ ameaca }: { ameaca: AmeacaFoco }) {
+  const cor = corDoRisco(ameaca.nivel);
+  const { foco } = ameaca;
   return (
     <section className="painel p-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Foco selecionado</h2>
+        <h2 className="text-sm font-semibold">Foco em análise</h2>
         <span
           className="rounded-full px-2 py-0.5 text-xs font-semibold"
           style={{ backgroundColor: `color-mix(in oklch, ${cor} 22%, transparent)`, color: cor }}
         >
-          {rotuloRisco(foco.risco)}
+          {rotuloRisco(ameaca.nivel)}
         </span>
       </div>
       <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+        <Campo rotulo="Distância" valor={`${ameaca.distanciaKm.toFixed(1)} km`} />
+        <Campo rotulo="Setor ameaçado" valor={ameaca.setorAmeacado} />
         <Campo rotulo="Coordenadas" valor={`${foco.lat.toFixed(4)}, ${foco.lon.toFixed(4)}`} />
         <Campo rotulo="Satélite" valor={foco.satelite} />
         <Campo rotulo="Potência radiativa" valor={`${foco.frpMw.toFixed(1)} MW`} />
@@ -490,7 +635,7 @@ function DetalheFoco({ foco }: { foco: Foco }) {
         <Campo rotulo="Detecção" valor={`há ${foco.horasAtras.toFixed(0)} h`} />
         <Campo
           rotulo="Avanço provável"
-          valor={`${rosaDosVentos(foco.avancoGraus)} · ${Math.round(foco.avancoGraus)}°`}
+          valor={`${rosaDosVentos(ameaca.azimuteAvanco)} · ${Math.round(ameaca.azimuteAvanco)}°`}
         />
       </dl>
     </section>
@@ -501,7 +646,7 @@ function Campo({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
     <div>
       <dt className="rotulo">{rotulo}</dt>
-      <dd className="numero-tecnico mt-0.5 text-sm">{valor}</dd>
+      <dd className="numero-tecnico mt-0.5 text-sm capitalize">{valor}</dd>
     </div>
   );
 }
